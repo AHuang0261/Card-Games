@@ -8,21 +8,39 @@ class Suits(Enum):
     HEART = 2
     SPADE = 3
 
-class Card():
+class Card:
     SCALE_FACTOR = 0.20
-    visible = False
-    orientation = 0
-    permanent = False
-    cardBack =pygame.image.load('Images/back_of_card.png')
+    cardBack = pygame.image.load('Images/back_of_card.png')
+    
+    @staticmethod
+    def preload_images():
+        images = {}
+        images['cardBack'] = pygame.image.load('Images/back_of_card.png')
+        for i in range(2, 15):
+            for suit in Suits:
+                image_path = f'Images/{i}_of_{suit.name.lower()}s.png'
+                images[image_path] = pygame.image.load(image_path)
+        return images
+
+    images = preload_images()
+
     def __init__(self, rank, suit):
         self.suit = suit
         self.rank = rank
+        self.visible = False
+        self.orientation = 0
+        self.permanent = False
+        self.update_image()
+
+    def update_image(self):
         if self.visible:
-            self.image = pygame.image.load('Images/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
+            self.image = Card.images[f'Images/{self.rank}_of_{self.suit.name.lower()}s.png']
         else:
-             self.image = self.cardBack
-        self.image = pygame.transform.scale(self.image, (self.image.get_width() * self.SCALE_FACTOR, self.image.get_height() * self.SCALE_FACTOR))        
-    def __repr__(self) -> str:
+            self.image = Card.images['cardBack']
+        self.image = pygame.transform.scale(self.image, (int(self.image.get_width() * self.SCALE_FACTOR), int(self.image.get_height() * self.SCALE_FACTOR)))
+        self.image = pygame.transform.rotate(self.image, self.orientation)
+
+    def __repr__(self):
         return repr((self.rank, self.suit))
 
     def set_orientation(self, new_orientation):
@@ -30,19 +48,34 @@ class Card():
         self.image = pygame.transform.rotate(self.image, delta)
         self.orientation = new_orientation
 
-    def switch_visibility(self, state = None, p = False):
-        if self.permanent: return
+    def switch_visibility(self, state=None, p=False):
+        if self.permanent:
+            return
         self.permanent = p
-        if state == None: self.visible = not self.visible
-        else: self.visible = state
-        if self.visible:
-            self.image = pygame.image.load('Images/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
+        if state is None:
+            self.visible = not self.visible
         else:
-             self.image = self.cardBack
-        self.image = pygame.transform.scale(self.image, (self.image.get_width() * self.SCALE_FACTOR, self.image.get_height() * self.SCALE_FACTOR))
-        self.image = pygame.transform.rotate(self.image, self.orientation)        
+            self.visible = state
+        self.update_image()
 
-    
+    def serialize(self):
+        return {
+            'rank': self.rank,
+            'suit': self.suit.value,  # Serialize suit as its value
+            'visible': self.visible,
+            'permanent': self.permanent,
+            'orientation': self.orientation
+        }
+
+    @classmethod
+    def deserialize(cls, data):
+        suit = Suits(data['suit'])  # Deserialize suit from its value
+        card = cls(data['rank'], suit)
+        card.visible = data['visible']
+        card.permanent = data['permanent']
+        card.orientation = data['orientation']
+        card.update_image()
+        return card
 
 class Deck():
     def __init__(self):

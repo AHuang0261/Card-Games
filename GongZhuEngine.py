@@ -3,6 +3,8 @@ from typing import Any
 from Cards import *
 import random
 import pygame
+#I think the different threads are not working together
+
 
 class GameState(Enum):
     STARTING = 0
@@ -83,6 +85,22 @@ class GongZhuPlayer(Player):
     def sort_collection(self):
         self.collection = sorted(self.collection, key= lambda card: (card.suit.value, card.rank))
     
+    def serialize(self):
+        return {
+            'name': self.name,
+            'hand': [card.serialize() for card in self.hand],
+            'collection': [card.serialize() for card in self.collection],
+            'score': self.score
+        }
+    
+    @classmethod
+    def deserialize(cls, data):
+        player = cls(data['name'])
+        player.hand = [GZCard.deserialize(card_data) for card_data in data['hand']]
+        player.collection = [GZCard.deserialize(card_data) for card_data in data['collection']]
+        player.score = data['score']
+        return player
+    
 
 class GongZhuEngine():
     players = None # list of players
@@ -95,12 +113,12 @@ class GongZhuEngine():
     sells = [False, False, False, False]
     suit_played = [False, False, False, False]
     loser = None
-    developer_mode = False
+    developer_mode = True
 
     def __init__(self):
         self.players = (GongZhuPlayer("Player 1"), GongZhuPlayer("Player 2"), GongZhuPlayer("Player 3"), GongZhuPlayer("Player 4"))
         self.state = GameState.STARTING
-        
+    
     def deal_new_round(self):
         for player in self.players:
             player.collection =[]
@@ -226,6 +244,35 @@ class GongZhuEngine():
         if self.loser != None:
             self.state = GameState.ENDED
 
+    def serialize(self):
+        return {
+            'players': [player.serialize() for player in self.players],
+            'state': self.state.value,
+            'current_player': self.current_player,
+            'board': [card.serialize() if card else None for card in self.board],
+            'board_size': self.board_size,
+            'lead_suit': self.lead_suit.value if self.lead_suit else None,
+            'is_leader': self.is_leader,
+            'sells': self.sells,
+            'suit_played': self.suit_played,
+            'loser': self.loser.serialize() if self.loser else None
+        }
+    
+    @classmethod
+    def deserialize(cls, data):
+        engine = cls()
+        engine.players = [GongZhuPlayer.deserialize(player_data) for player_data in data['players']]
+        engine.state = GameState(data['state'])
+        engine.current_player = data['current_player']
+        engine.board = [GZCard.deserialize(card_data) if card_data else None for card_data in data['board']]
+        engine.board_size = data['board_size']
+        engine.lead_suit = Suits(data['lead_suit']) if data['lead_suit'] is not None else None
+        engine.is_leader = data['is_leader']
+        engine.sells = data['sells']
+        engine.suit_played = data['suit_played']
+        engine.loser = GongZhuPlayer.deserialize(data['loser']) if data['loser'] else None
+        return engine
+    
     # deck = GZDeck()
     # deck.shuffle()
     # p = GongZhuPlayer("p1")
