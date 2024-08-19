@@ -1,19 +1,21 @@
 import pygame
 from GongZhuEngine import *
-from Network import Network
-import threading
-import time
 
-
-client_number = 0
+pygame.init()
+bounds = (1024, 1024)
+window = pygame.display.set_mode(bounds)
+pygame.display.set_caption("Gong Zhu")
 
 # cardBack = pygame.transform.scale(cardBack, (int(238*0.8), int(332*0.8)))
+engine = GongZhuEngine()
+engine.developer_mode = True
 # deck = Deck()
 # deck.shuffle()
 # card = Card(3, Suits(2))
 # print(f"Cardback dims: {cardBack.get_size()}")
 # print(f"Normal card: {deck.cards.pop().image.get_size()}")
 
+#!Make a button in the bottom right to show collection and put an arrow in the center to indicate current player
 
 """
 Cardback dims: (960, 720) It looks like the transparent space is still being included in the pixel measurements, either get a new 
@@ -22,15 +24,6 @@ Normal card: (500, 726)
 scaled to 0.2: (100, 145)
 """
 
-
-pygame.init()
-bounds = (1024, 1024)
-window = pygame.display.set_mode(bounds)
-pygame.display.set_caption("Gong Zhu Client")
-run = True
-n = Network()
-engine = None
-# engine = GongZhuEngine()
 
 hand_cards = pygame.sprite.Group()
 board_cards = pygame.sprite.Group()
@@ -45,8 +38,6 @@ show_game_button_rect = pygame.Rect(10, 10, 120, 60)
 next_round_rect = pygame.Rect(0,0, 300, 100)
 turn_indicator = Image('Images/Arrow.png')
 increment =  50
-
-
 def render_round_start(window):
     window.fill((0,81,44))
     offset = 0
@@ -85,7 +76,6 @@ def render_bidding(window):
         pygame.draw.rect(window, "gray", bidding_end_button_rect)
         if pygame.mouse.get_pressed()[0]:
             engine.state = GameState.PLAYING
-            n.send(engine)
             print(engine.sells)    
     else:
         pygame.draw.rect(window, "white", bidding_end_button_rect)
@@ -277,37 +267,11 @@ def set_visibility():
         if card in engine.players[engine.current_player].hand: card.switch_visibility(True)
         else: card.switch_visibility(False)
 
-
-
-#Threading safety
-engine_lock = threading.Lock()
-
-def sync_with_server():
-    global engine
-    while run:
-        try:
-            new_engine = n.send("get")  # Assuming 'get' is a valid command to fetch the latest engine state
-            with engine_lock:
-                engine = new_engine
-        except Exception as e:
-            print(f"Error syncing with server: {e}")
-        time.sleep(1)
-
-# Start the sync thread
-sync_thread = threading.Thread(target=sync_with_server)
-sync_thread.start()
-
-
-#Event loop
+run = True
 while run:
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             run = False
-        
-        if engine is None:
-            print("Waiting for initial engine state from server...")
-            time.sleep(0.5)
-            continue
 
         if engine.state == GameState.STARTING:
             for card in collection_cards: card.kill()
@@ -362,4 +326,3 @@ while run:
 
         pygame.display.update()
         hand_cards.update()
-        n.send(engine)
