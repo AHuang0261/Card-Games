@@ -1,5 +1,5 @@
 from Cards import *
-# a = [1, 2, 3, 4]
+a = [1, 2, 3, 4]
 # b = []
 # b = a[:]
 # a = []
@@ -9,4 +9,4 @@ from Cards import *
 a = (1,1)
 b = (2,2)
 c = a + b
-print(f"{Suits(0).name}")
+print(f"{a[Suits.CLUB.value]}")

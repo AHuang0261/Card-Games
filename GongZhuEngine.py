@@ -5,12 +5,19 @@ import random
 import pygame
 
 class GameState(Enum):
+    MAINMENU = -1
     STARTING = 0
     PLAYING = 1
     SCORING = 2
     BIDDING = 3
     WAITING = 4
     ENDED = 5
+
+class ComMode(Enum):
+    MULTIPLAYER = 0
+    RANDOM = 1
+    BASIC = 2
+    SMART = 3
 
 #Using 3.14 as a flag for the doubler for scoring
 class GZCard(pygame.sprite.Sprite, Card):
@@ -60,8 +67,7 @@ class GZCard(pygame.sprite.Sprite, Card):
         if self.clicked():
             GZCard.selected.append(self)
             while len(GZCard.selected) > 1:
-                GZCard.selected.pop(0)
-            
+                GZCard.selected.pop(0)          
             
 class GZDeck(Deck):
     def __init__(self):
@@ -95,11 +101,12 @@ class GongZhuEngine():
     sells = [False, False, False, False]
     suit_played = [False, False, False, False]
     loser = None
-    developer_mode = False
+    developer_mode = True
+    com_mode = ComMode.RANDOM
 
     def __init__(self):
         self.players = (GongZhuPlayer("Player 1"), GongZhuPlayer("Player 2"), GongZhuPlayer("Player 3"), GongZhuPlayer("Player 4"))
-        self.state = GameState.STARTING
+        self.state = GameState.MAINMENU
         
     def deal_new_round(self):
         for player in self.players:
@@ -117,7 +124,7 @@ class GongZhuEngine():
         if self.developer_mode:
             for player in self.players:
                 for card in player.hand:
-                    card.switch_visibility(True)
+                    card.switch_visibility(True, True)
         else: 
             for card in self.players[self.current_player].hand: card.switch_visibility(True)
         self.state = GameState.BIDDING 
@@ -165,6 +172,31 @@ class GongZhuEngine():
         if self.board_size == 4:
             self.suit_played[self.lead_suit.value] = True
 
+    #Set the card selection based on some algorithm, skips when not a com player's turn, returns milliseconds of delay
+    def com_select_card(self):
+        if self.com_mode == ComMode.MULTIPLAYER: return 0       
+        if self.current_player == 0: return 0
+
+        if self.com_mode == ComMode.RANDOM:
+            GZCard.selected = [self.random_select()]
+            return 500
+
+        if self.com_mode == ComMode.BASIC:
+            return 500
+
+        if self.com_mode == ComMode.SMART:
+            return 250
+    
+    #returns a random valid playable card
+    def random_select(self):
+        while True:
+            x = random.choice(self.players[self.current_player].hand)
+            if self.check_card(x): return x
+        # curr_hand = self.players[self.current_player].hand
+        # follow_cards = [card for card in curr_hand if card.suit == self.lead_suit]
+        # if len(follow_cards == 0): return  random.choice(curr_hand)
+        # else: return random.choice(follow_cards)
+
     #returns index of collector
     def collect(self):
         #determine collector
@@ -183,15 +215,16 @@ class GongZhuEngine():
         self.board_size = 0
         return ind
             
-    #!There seems to be an issue w the scoring where
+
     def score_game(self):
         if self.state != GameState.SCORING: return
         for player in self.players:
             if len(player.collection) == 16: #collecting everything condition
-                player.score += 2000
+                player.score -= 2000
                 continue
             round_score = 0
             doubled = False
+            heart_count = 0
             for card in player.collection:
                 if card.score != 3.14:
                     if self.sells[card.suit.value]:
@@ -199,7 +232,12 @@ class GongZhuEngine():
                     else: round_score += card.score
                 else:
                     doubled = True
-                #doubler logic
+                if card.suit == Suits.HEART: heart_count += 1
+            #all hearts logic
+            if heart_count == 13:
+                round_score -= 400 #200 to nullfiy the negative and another 200 bonus
+                if self.sells[Suits.HEART.value]: round_score -= 400
+            #doubler logic
             if doubled and len(player.collection) == 1:
                 round_score = -50
                 if self.sells[0]: round_score *= 2
@@ -218,8 +256,13 @@ class GongZhuEngine():
 
     def check_loser(self):
         max = 0
+        min = 2*31 -1
         for player in self.players:
-            if player.score > 1000 and player.score > max:
+            if player.score < min:
+                min = player.score
+        
+        for player in self.players:
+            if player.score > 1000 + min and player.score > max:
                 self.loser = player
                 max = player.score
                 

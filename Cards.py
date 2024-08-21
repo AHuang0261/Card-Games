@@ -13,12 +13,12 @@ class Card():
     visible = False
     orientation = 0
     permanent = False
-    cardBack =pygame.image.load('Images/back_of_card.png')
+    cardBack =pygame.image.load('Images/Cards/back_of_card.png')
     def __init__(self, rank, suit):
         self.suit = suit
         self.rank = rank
         if self.visible:
-            self.image = pygame.image.load('Images/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
+            self.image = pygame.image.load('Images/Cards/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
         else:
              self.image = self.cardBack
         self.image = pygame.transform.scale(self.image, (self.image.get_width() * self.SCALE_FACTOR, self.image.get_height() * self.SCALE_FACTOR))        
@@ -36,7 +36,7 @@ class Card():
         if state == None: self.visible = not self.visible
         else: self.visible = state
         if self.visible:
-            self.image = pygame.image.load('Images/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
+            self.image = pygame.image.load('Images/Cards/'+str(self.rank)+'_of_' + str(self.suit.name).lower() + 's.png')
         else:
              self.image = self.cardBack
         self.image = pygame.transform.scale(self.image, (self.image.get_width() * self.SCALE_FACTOR, self.image.get_height() * self.SCALE_FACTOR))
