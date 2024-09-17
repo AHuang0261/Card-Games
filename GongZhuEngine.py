@@ -3,16 +3,24 @@ from typing import Any
 from Cards import *
 import random
 import pygame
-#I think the different threads are not working together
-
+import time
+from GongZhuISMCTS import ISMCTSNode
+import copy
 
 class GameState(Enum):
+    MAINMENU = -1
     STARTING = 0
     PLAYING = 1
     SCORING = 2
     BIDDING = 3
     WAITING = 4
     ENDED = 5
+
+class ComMode(Enum):
+    MULTIPLAYER = 0
+    RANDOM = 1
+    BASIC = 2
+    SMART = 3
 
 #Using 3.14 as a flag for the doubler for scoring
 class GZCard(pygame.sprite.Sprite, Card):
@@ -24,7 +32,6 @@ class GZCard(pygame.sprite.Sprite, Card):
     def __init__(self, rank, suit):
         pygame.sprite.Sprite.__init__(self)
         Card.__init__(self, rank, suit)
-        self.rect = self.image.get_rect(topleft = (0,0))
         if self.suit == Suits.HEART:
             self.scoreable = True
             if self.rank <= 4: self.score = 0
@@ -47,7 +54,14 @@ class GZCard(pygame.sprite.Sprite, Card):
                 self.is_sellable = True
         if self.rank == 14 and self.suit == Suits.HEART: self.is_sellable = True
         # self.score *= -1
-    
+
+    def __repr__(self) -> str:
+        return super().__repr__()
+
+    def init_image(self):
+        self.load_image()
+        self.rect = self.image.get_rect(topleft = (0,0))
+
     def clicked(self):
         if pygame.mouse.get_pressed()[0] and self.rect.collidepoint(pygame.mouse.get_pos()):
             # print(f"{self.rank} of {self.suit}s clicked. Score is {self.score}")
@@ -62,9 +76,39 @@ class GZCard(pygame.sprite.Sprite, Card):
         if self.clicked():
             GZCard.selected.append(self)
             while len(GZCard.selected) > 1:
-                GZCard.selected.pop(0)
+                GZCard.selected.pop(0)          
             
-            
+class LogicalGZCard(LogicalCard):
+    score = 0
+    scoreable = False
+    is_sellable = False
+    def __init__(self, rank, suit):
+        self.rank = rank
+        self.suit = suit
+        if self.suit == Suits.HEART:
+            self.scoreable = True
+            if self.rank <= 4: self.score = 0
+            elif self.rank <= 10: self.score = 10
+            else: self.score = 10 * (self.rank - 9)
+        elif self.suit == Suits.SPADE: 
+            if self.rank == 12: 
+                self.score = 100
+                self.scoreable = True
+                self.is_sellable = True
+        elif self.suit == Suits.DIAMOND:
+            if self.rank == 11: 
+                self.scoreable = True
+                self.score = -100
+                self.is_sellable = True
+        else:
+            if self.rank == 10: 
+                self.scoreable = True
+                self.score = 3.14 
+                self.is_sellable = True
+        if self.rank == 14 and self.suit == Suits.HEART: self.is_sellable = True
+        # self.score *= -1
+        
+
 class GZDeck(Deck):
     def __init__(self):
         self.cards = []
@@ -72,6 +116,13 @@ class GZDeck(Deck):
             for rank in range(2,15):
                 self.cards.append(GZCard(rank,suit))
     
+class LogicalGZDeck(Deck):
+    def __init__(self):
+        self.cards = []
+        for suit in Suits:
+            for rank in range(2, 15):
+                self.cards.append(LogicalGZCard(rank, suit))
+
 
 class GongZhuPlayer(Player):
     collection = None
@@ -84,28 +135,21 @@ class GongZhuPlayer(Player):
     
     def sort_collection(self):
         self.collection = sorted(self.collection, key= lambda card: (card.suit.value, card.rank))
-    
-    def serialize(self):
-        return {
-            'name': self.name,
-            'hand': [card.serialize() for card in self.hand],
-            'collection': [card.serialize() for card in self.collection],
-            'score': self.score
-        }
-    
-    @classmethod
-    def deserialize(cls, data):
-        player = cls(data['name'])
-        player.hand = [GZCard.deserialize(card_data) for card_data in data['hand']]
-        player.collection = [GZCard.deserialize(card_data) for card_data in data['collection']]
-        player.score = data['score']
-        return player
-    
+
+class LogicalGongZhuPlayer(Player):
+    collection = None
+    score = None
+    def __init__(self, name):
+        super().__init__(name)
+        self.collection = []
+        self.score = 0
+
 
 class GongZhuEngine():
     players = None # list of players
     state = None #game state
     current_player = None # index of current player
+    client_player = 0 #player running this program
     board = [None, None, None, None] # The cards that have been played of that trick
     board_size = 0 # Number of cards played in that trick
     lead_suit = None
@@ -113,13 +157,15 @@ class GongZhuEngine():
     sells = [False, False, False, False]
     suit_played = [False, False, False, False]
     loser = None
-    developer_mode = True
+    developer_mode = False
+    com_mode = ComMode.SMART
+    played_cards = []
 
     def __init__(self):
         self.players = (GongZhuPlayer("Player 1"), GongZhuPlayer("Player 2"), GongZhuPlayer("Player 3"), GongZhuPlayer("Player 4"))
-        self.state = GameState.STARTING
-    
-    def deal_new_round(self):
+        self.state = GameState.MAINMENU
+
+    def deal_new_round(self, load_images = True):
         for player in self.players:
             player.collection =[]
             player.hand = []
@@ -127,17 +173,23 @@ class GongZhuEngine():
         deck.shuffle()
         for i in range(13):
             for player in self.players:
-                player.pull(deck.deal())
+                card = deck.deal()
+                if load_images: card.init_image()
+                player.pull(card)
         if self.current_player == None:
             self.current_player = 0 #int(random.random() * 4)
         for player in self.players:
             player.sort_by_suit()
-        if self.developer_mode:
+        if self.developer_mode and load_images:
             for player in self.players:
                 for card in player.hand:
-                    card.switch_visibility(True)
-        else: 
-            for card in self.players[self.current_player].hand: card.switch_visibility(True)
+                    card.switch_visibility(True, True)
+        elif load_images: 
+            i = 0
+            for player in self.players:
+                for card in player.hand:
+                    if i == self.client_player: card.switch_visibility(True, True)
+                    else: card.switch_visibility(False)
         self.state = GameState.BIDDING 
         self.sells = [False, False, False, False]
         self.suit_played = [False, False, False, False]
@@ -169,11 +221,12 @@ class GongZhuEngine():
             if c.suit == self.lead_suit: return False
         return True
     
-    def play_card(self, card):
-        #card validity is checked in event loop
+    #assumes valid card
+    def play_card(self, card):        
         self.board[self.current_player] = card
         self.players[self.current_player].hand.remove(card)
         self.board_size += 1
+        self.played_cards.append(card)
         
         if self.board_size == 1:
             self.is_leader = False
@@ -182,7 +235,57 @@ class GongZhuEngine():
             self.next_player()
         if self.board_size == 4:
             self.suit_played[self.lead_suit.value] = True
+    
+    #same as play_card but involves a collect at the end. This is for playing GZ purely in the engine, no display issues
+    def next_state(self, card):
+        self.play_card(card)
+        if self.board_size == 4:
+            self.collect()
+        return self
 
+    #Set the card selection based on some algorithm, skips when not a com player's turn, returns milliseconds of delay
+    def com_select_card(self):
+        start = time.time()
+        if self.com_mode == ComMode.MULTIPLAYER: return 0       
+        if self.current_player == 0: return 0
+
+        if self.com_mode == ComMode.RANDOM:
+            GZCard.selected = [self.random_select()]
+            return 500
+
+        if self.com_mode == ComMode.BASIC:
+            return 500
+
+        if self.com_mode == ComMode.SMART:
+            GZCard.selected = [self.smart_select()]
+            # print(f"Selected card: {GZCard.selected[0]}")
+            ellapsed = round(1000*(time.time() - start))
+            print(f"Time taken: {ellapsed}ms")
+            return 500 - ellapsed if ellapsed < 500 else 0
+    
+    #returns a random valid playable card
+    def random_select(self):
+        while True:
+            x = random.choice(self.players[self.current_player].hand)
+            if self.check_card(x): return x
+        # curr_hand = self.players[self.current_player].hand
+        # follow_cards = [card for card in curr_hand if card.suit == self.lead_suit]
+        # if len(follow_cards == 0): return  random.choice(curr_hand)
+        # else: return random.choice(follow_cards)
+
+    def smart_select(self):
+        # print(self.players[self.current_player])
+        # print(self.players[self.current_player].hand)
+        pov_engine = POVGongZhuEngine(self.current_player, self)
+        # pov_engine.set_attributes(self)
+        root = ISMCTSNode(pov_engine)
+        rs = root.best_action()
+        for card in self.players[self.current_player].hand:
+            if card.rank == rs.rank and card.suit == rs.suit: return card
+        print("Algorithmically determined card does not exist in hand")
+        return None
+        # return root.best_action()
+    
     #returns index of collector
     def collect(self):
         #determine collector
@@ -201,15 +304,16 @@ class GongZhuEngine():
         self.board_size = 0
         return ind
             
-    #!There seems to be an issue w the scoring where
+
     def score_game(self):
         if self.state != GameState.SCORING: return
         for player in self.players:
             if len(player.collection) == 16: #collecting everything condition
-                player.score += 2000
+                player.score -= 2000
                 continue
             round_score = 0
             doubled = False
+            heart_count = 0
             for card in player.collection:
                 if card.score != 3.14:
                     if self.sells[card.suit.value]:
@@ -217,7 +321,12 @@ class GongZhuEngine():
                     else: round_score += card.score
                 else:
                     doubled = True
-                #doubler logic
+                if card.suit == Suits.HEART: heart_count += 1
+            #all hearts logic
+            if heart_count == 13:
+                round_score -= 400 #200 to nullfiy the negative and another 200 bonus
+                if self.sells[Suits.HEART.value]: round_score -= 400
+            #doubler logic
             if doubled and len(player.collection) == 1:
                 round_score = -50
                 if self.sells[0]: round_score *= 2
@@ -236,51 +345,134 @@ class GongZhuEngine():
 
     def check_loser(self):
         max = 0
+        min = 2**31 -1
         for player in self.players:
-            if player.score > 1000 and player.score > max:
+            if player.score < min:
+                min = player.score
+        
+        for player in self.players:
+            if player.score > 1000 + min and player.score > max:
                 self.loser = player
                 max = player.score
                 
         if self.loser != None:
             self.state = GameState.ENDED
 
-    def serialize(self):
-        return {
-            'players': [player.serialize() for player in self.players],
-            'state': self.state.value,
-            'current_player': self.current_player,
-            'board': [card.serialize() if card else None for card in self.board],
-            'board_size': self.board_size,
-            'lead_suit': self.lead_suit.value if self.lead_suit else None,
-            'is_leader': self.is_leader,
-            'sells': self.sells,
-            'suit_played': self.suit_played,
-            'loser': self.loser.serialize() if self.loser else None
-        }
+class POVGongZhuEngine(GongZhuEngine):
     
-    @classmethod
-    def deserialize(cls, data):
-        engine = cls()
-        engine.players = [GongZhuPlayer.deserialize(player_data) for player_data in data['players']]
-        engine.state = GameState(data['state'])
-        engine.current_player = data['current_player']
-        engine.board = [GZCard.deserialize(card_data) if card_data else None for card_data in data['board']]
-        engine.board_size = data['board_size']
-        engine.lead_suit = Suits(data['lead_suit']) if data['lead_suit'] is not None else None
-        engine.is_leader = data['is_leader']
-        engine.sells = data['sells']
-        engine.suit_played = data['suit_played']
-        engine.loser = GongZhuPlayer.deserialize(data['loser']) if data['loser'] else None
-        return engine
+    def __init__(self, seat,engine_in):
+        self.seat = seat
+        self.set_attributes(engine_in)
     
-    # deck = GZDeck()
-    # deck.shuffle()
-    # p = GongZhuPlayer("p1")
-    # for i in range(15):
-    #     p.pull(deck.deal())
-    # print(p.hand)
-    # p.sort_by_suit()
-    # print(p.hand)   
+    #engine_in is a GongZhuEngine obj that is in game
+    def set_attributes(self, engine_in):
+        if engine_in.state not in (GameState.PLAYING, GameState.BIDDING):
+            print(f"Tried to set attributes but in: {engine_in.state}")
+            return
+        self.current_player = engine_in.current_player
+        self.board = [self.convert_to_logical(card) if card is not None else None for card in engine_in.board]
+        self.board_size = engine_in.board_size
+        self.lead_suit = engine_in.lead_suit
+        self.is_leader = engine_in.is_leader
+        self.sells = engine_in.sells[:]
+        self.suit_played = engine_in.suit_played[:]
+        self.played_cards = [self.convert_to_logical(card) for card in engine_in.played_cards]
+        self.state = engine_in.state
+        
+        self.players = []
+        i = 0
+        for player in engine_in.players:
+            copied_player = GongZhuPlayer(player.name)
+            # if self.seat == i: 
+            copied_player.hand = [LogicalGZCard(card.rank, card.suit) for card in player.hand]
+            copied_player.collection = [LogicalGZCard(card.rank, card.suit) for card in player.collection]
+            #Do not copy over score
+            self.players.append(copied_player)
+            i+=1
+        # print(f"Initial Player {engine_in.players[self.seat]}")
+        self.pov_hand = [self.convert_to_logical(card) for card in engine_in.players[self.seat].hand]
+        # print(f"Initial povhand {self.pov_hand}")
+
+    def convert_to_logical(self, card):
+        logical = LogicalGZCard(card.rank, card.suit)
+        logical.score = card.score
+        logical.is_sellable = card.is_sellable
+        logical.scoreable = card.scoreable
+        return logical
+
+    def find_card_ind(self, card, list):
+        for i in range(len(list)):
+            if list[i].rank == card.rank and list[i].suit == card.suit: return i
+        return -1
+
+    def copy(self):
+        return POVGongZhuEngine(self.seat, self)
+
+    def set_hands(self, full_random):
+        deck = LogicalGZDeck()
+        # print(f"All Random: {full_random}. ")
+        for card in self.played_cards:
+            deck.cards.pop(self.find_card_ind(card, deck.cards))
+            # print(f"Played: {card.rank} of {card.suit}. Deck size {len(deck.cards)}")
+        if not full_random:
+            # print(self.pov_hand)
+            for card in self.pov_hand:
+                deck.cards.pop(self.find_card_ind(card, deck.cards))
+                # print(f"In hand: {card.rank} of {card.suit}. Deck size {len(deck.cards)}")
+                # print(len(deck.cards))
+        deck.shuffle()
+        # print("deck shuffled")
+        self.players[self.current_player]
+        for i in range(4):
+            if full_random: self.players[i].hand = []
+            elif not full_random and i != self.seat: self.players[i].hand = []
+        
+        i = 0
+        while not deck.is_empty():
+            if i % 4 == 0 and not full_random:
+                # print(f"Skipping")
+                i += 1
+                continue
+            self.players[(self.seat + i)%4].hand.append(deck.deal())
+            i+=1
+            # print(f"cards dealt: {i}")
+
+        if not full_random: self.players[self.seat].hand = self.pov_hand
+        # for i in range(4):
+        #     print(f"hands dealt. Player {i} hand Check-> {self.players[i].hand} len = {len(self.players[i].hand)}")
+
+    def is_round_over(self):
+        return all(len(p.hand) == 0 for p in self.players) and self.state == GameState.PLAYING
+    
+    def score_game(self):
+        old_score = []
+        for p in self.players:
+            old_score.append(p.score)
+        gs = self.state
+        self.state = GameState.SCORING
+        super().score_game()
+        self.state = gs
+        score_change = []
+        for i in range(4):
+            score_change.append(self.players[i].score - old_score[i])
+        personal_score = score_change[self.seat]
+        score_change.pop(self.seat)
+        max_outside_score = max(score_change)
+        bonus = 0
+        # print("Adjusted Game Score Calculated")
+        return max_outside_score - personal_score + bonus
+
+
+'''
+array of viewing player's cards
+array of missing cards
+
+player to act
+viewing player
+board - suit_played
+played cards
+'''
+
 class Image():
     def __init__(self, name):
         self.image = pygame.image.load(name)
