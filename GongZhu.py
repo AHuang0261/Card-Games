@@ -76,6 +76,7 @@ Add instructions and settings: Difficulty selector and delay between com turns a
 Implement AI
 Strange visibility bug where when the next round starts, during the bidding phase, player 4s cards(player that got pig) were visible but hidden once play started they were hidden
 Game loop requires some sort of event in order to run another iteration, I would prefer if it took in events but advanced with a tick system or smth.
+For some reason the score and collection buttons are not working when there is an ai player. I think it might be how many things the system can do at once
 '''
 
 #Menu Buttons
@@ -152,6 +153,7 @@ def render_bidding(window):
     render_sell_info(window)
     if bidding_end_button.draw(window):
         engine.state = GameState.PLAYING
+        render_playing(window)
     
 def render_sell_info(window):
     font = pygame.font.Font('Baskervville-Regular.ttf', 20)
@@ -333,6 +335,8 @@ while run:
             for card in collection_cards: card.kill()
             engine.deal_new_round()
             render_round_start(window)
+            set_visibility()
+
         
         if engine.state == GameState.BIDDING:
             render_bidding(window)
@@ -343,25 +347,24 @@ while run:
             GZCard.selected[0] = None
         
         if engine.state == GameState.PLAYING:
-            render_playing(window)
+            if engine.is_leader: render_playing(window)
             active_player = engine.players[engine.current_player]
             delay = engine.com_select_card()
             selected = GZCard.selected[0]
             if selected != None and selected in active_player.hand and engine.check_card(selected):
                 shift_cards(selected) #need to run this before any changes to hands
                 move_to_board(selected)
+                render_playing(window)
                 engine.play_card(selected)
                 pygame.time.wait(delay)
-                set_visibility()
                 if engine.board_size == 4:                    
-                    board_cards.draw(window)
+                    # board_cards.draw(window)
                     pygame.display.update()
                     pygame.time.wait(500)
                     for c in engine.board:     
                         board_cards.remove(c) 
                         if(c.scoreable): collection_cards.add(c)
                     engine.collect()                
-                    set_visibility()
             GZCard.selected[0] = None
         
         if all(len(p.hand) == 0 for p in engine.players) and engine.state == GameState.PLAYING:
@@ -374,6 +377,7 @@ while run:
         
         if engine.state == GameState.WAITING:
             render_scoring(window)
+            engine.played_cards = []
             #need to reset hands after this otherwise it will keep adding the round score
         
         engine.check_loser()
