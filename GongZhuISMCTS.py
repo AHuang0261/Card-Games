@@ -1,15 +1,8 @@
 from GongZhuEngine import *
 import GongZhuEngine
 import numpy as np
-import copy
 
-'''ToDo
 
-The randomization adds some additional subtlty to the tree that I don't wanna deal w right now. The main benefit is for bluffing which may not be important just yet maybe in the next version
-Also, now that I'm working on it, I don't see how the random set has valid "next options" cause it generates random values. Maybe I need to set the hands after playing that card
-Need to come up with an intelligent scoring system. Maybe a second term that rewards knockouts and punishes knocking self out
-See Tree Policy for more comments
-'''
 class ISMCTSNode():
     #state -> POVGongZhuEngine object, Parent, ISMCTSNode object, parent action GZCard object
     def __init__(self, state, parent = None, parent_action = None):
@@ -70,12 +63,6 @@ class ISMCTSNode():
         choice_scores = [c.results/c.number_of_visits + explore_weight * np.sqrt(np.log(self.number_of_visits) / c.number_of_visits) for c in self.children]
         return self.children[np.argmax(choice_scores)]
 
-    '''
-    Not sure what the algorithm is supposed to be. If I'm supposed to expand all the way down the tree then I need to make sure I'm properly handling the state.
-    However, back of envlope calculation of [Prod (k)]^4 for k in {1,...,13} suggestsw that this tree is too big E39 for k = 13, E14 for k = 7
-    Might only look at next action and remove while loop
-
-    '''
 
     def tree_policy(self, is_all_random):
         self.state.set_hands(is_all_random)
@@ -112,13 +99,10 @@ class ISMCTSNode():
     def best_action(self):
         initial_state = self.state.copy()
         self.untried_actions = self.get_untried_actions()
-        simulations = 1000 #1000 sims takes abt 300 ms
+        simulations = 1000 
         if len(self.untried_actions) > 4: simulations = 250 * len(self.untried_actions)
         # first_non_random = True
         for i in range(simulations):
-            # print(f"Iteration {i}")
-            # print(f"\nIteration: {i} Operated Node: {self} State object: {self.state} Children: {self.children} {len(self.children)}")
-            # print(f"\nIteration: {i} Operated Node: {self} ")
             self.state = initial_state.copy()
             # node_copy = ISMCTSNode(state_copy, self.parent, self.parent_action)
             # v = self.tree_policy(i < simulations * 0.3) 
@@ -128,7 +112,7 @@ class ISMCTSNode():
             v = self.tree_policy(False)
             reward = v.rollout()
             v.backpropagate(reward)
-            # print(v)
+
         
         # print(f"Self Children: {len(self.children)} v children{len(v.children)}")
         print(f"Best Child Action {self.best_child(explore_weight=0.0).parent_action}")

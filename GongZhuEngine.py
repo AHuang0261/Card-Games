@@ -357,6 +357,7 @@ class GongZhuEngine():
                 
         if self.loser != None:
             self.state = GameState.ENDED
+            return True
 
 class POVGongZhuEngine(GongZhuEngine):
     
@@ -444,6 +445,7 @@ class POVGongZhuEngine(GongZhuEngine):
     def is_round_over(self):
         return all(len(p.hand) == 0 for p in self.players) and self.state == GameState.PLAYING
     
+    #Reward function
     def score_game(self):
         old_score = []
         for p in self.players:
@@ -452,15 +454,18 @@ class POVGongZhuEngine(GongZhuEngine):
         self.state = GameState.SCORING
         super().score_game()
         self.state = gs
+        if super().check_loser(): 
+            self.state = gs 
+            return 1
         score_change = []
         for i in range(4):
             score_change.append(self.players[i].score - old_score[i])
         personal_score = score_change[self.seat]
         score_change.pop(self.seat)
         max_outside_score = max(score_change)
-        bonus = 0
-        # print("Adjusted Game Score Calculated")
-        return max_outside_score - personal_score + bonus
+        
+        #Normalizing against max points in game        
+        return (max_outside_score - personal_score)/1000
 
 
 '''
